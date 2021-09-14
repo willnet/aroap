@@ -7,14 +7,46 @@ module Aroap
   extend ActiveSupport::Concern
 
   included do
-    @ar_initialize_counter = Hash.new(0)
-    @ar_find_counter = Hash.new(0)
-
     after_initialize :_count_initialize
     after_find :_count_find
   end
 
-  class_methods do
+  def _count_initialize
+    return unless Aroap.enable_counter?
+
+    Aroap.increment_initialize_counter(caller)
+  end
+
+  def _count_find
+    return unless Aroap.enable_counter?
+
+    Aroap.increment_find_counter(caller)
+  end
+
+  @ar_initialize_counter = Hash.new(0)
+  @ar_find_counter = Hash.new(0)
+  @enable_counter = false
+
+  class << self
+    attr_reader :ar_initialize_counter, :ar_find_counter
+
+    def profile
+      enable_counter
+      yield
+      log_counter
+      reset_counter
+    ensure
+      disable_counter
+    end
+
+    def increment_initialize_counter(caller)
+      ar_initialize_counter[caller_in_app(caller)] += 1
+    end
+
+    def increment_find_counter(caller)
+      ar_find_counter[caller_in_app(caller)] += 1
+    end
+
     def enable_counter?
       @enable_counter
     end
@@ -27,35 +59,31 @@ module Aroap
       @enable_counter = false
     end
 
-    def log_counter
-      File.open('hoge.log', 'w') do |file|
-        file.puts 'ar_initialize_counter'
-        file.write @ar_initialize_counter.inspect
-        file.puts 'ar_find_counter'
-        file.write @ar_find_counter.inspect
-      end
-    end
-
     def reset_counter
       @ar_initialize_counter = Hash.new(0)
       @ar_find_counter = Hash.new(0)
     end
-  end
 
-  def _gem_paths
-    @_gems_paths = (Gem.path | [Gem.default_dir]).map { |p| Regexp.escape(p) }
-  end
+    private
 
-  def _count_initialize
-    return unless self.class.enable_counter?
-    caller_in_app = caller.find { |file_and_lineno| !_gems_paths.any? { |gem_path| file_and_lineno.match?(gem_path) } }
-    self.class.instance_variable_get(:@ar_initialize_counter)[caller_in_app] += 1
-  end
+    def gems_paths
+      @gems_paths ||= (Gem.path | [Gem.default_dir]).map { |p| Regexp.escape(p) }
+    end
 
-  def _count_find
-    return unless self.class.enable_counter?
-    caller_in_app = caller.find { |file_and_lineno| !_gems_paths.any? { |gem_path| file_and_lineno.match?(gem_path) } }
-    self.class.instance_variable_get(:@ar_find_counter)[caller_in_app] += 1
+    def caller_in_app(caller)
+      caller.find { |file_and_lineno| gems_paths.none? { |gem_path| file_and_lineno.match?(gem_path) } }
+    end
+
+    def logger
+      @logger ||= Logger.new("aroap.log")
+    end
+
+    def log_counter
+      logger.info "ar_initialize_counter"
+      logger.info @ar_initialize_counter.inspect
+      logger.info "ar_find_counter"
+      logger.info @ar_find_counter.inspect
+    end
   end
 end
 

@@ -1,6 +1,10 @@
 # frozen_string_literal: true
 
 require "aroap"
+require "active_record"
+
+ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
+ActiveRecord::Base.logger = Logger.new($stdout)
 
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure
@@ -12,4 +16,13 @@ RSpec.configure do |config|
   config.expect_with :rspec do |c|
     c.syntax = :expect
   end
+end
+
+ActiveRecord::Schema.define do
+  create_table :users, force: true do |t|
+    t.string :name
+  end
+end
+
+class User < ActiveRecord::Base
 end
